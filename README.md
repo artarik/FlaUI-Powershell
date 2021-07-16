@@ -1,4 +1,7 @@
 # FlaUI-Powershell
+## Requirements
+Module CredentialManager
+## What script does:
 Simple Example how to use FlaUI is a .NET library with powershell.
 1. Open 1C
 2. Open Journal
