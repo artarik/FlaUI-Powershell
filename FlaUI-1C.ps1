@@ -1,5 +1,4 @@
-﻿Import-Module ImportExcel
-Import-Module CredentialManager
+﻿Import-Module CredentialManager
 
 #------ Init block
 Add-Type -AssemblyName System.Windows.Forms
@@ -136,9 +135,11 @@ foreach ($itemRow in $xpathWorkFlow) {
     RunAction -item $itemRow
 }
 
+Remove-Variable xpathWorkFlow
 $app.Dispose()
 
-$e = Open-ExcelPackage -Path $outFile 
+
+$e = New-Object OfficeOpenXml.ExcelPackage($outFile)
 $ws = $e.Workbook.Worksheets[1]
 
 for($rowIndex = 2; $rowIndex -le $ws.Dimension.Rows; $rowIndex ++)
@@ -153,22 +154,32 @@ for($rowIndex = 2; $rowIndex -le $ws.Dimension.Rows; $rowIndex ++)
      $resTable.Rows.Add($newRow)
 }
 
+$e.Workbook.Worksheets.Delete($ws)
+$ws = $e.Workbook.Worksheets.Add("Sheet1")
 
-$resTable | Export-Excel -Path $resFile -WorksheetName "Sheet1" -ClearSheet -ExcludeProperty ItemArray, RowError, RowState, Table, HasErrors -StartRow 3 
+$ws.Cells["A3"].LoadFromDataTable($resTable, $true) | Out-Null
 
-Remove-Item $outFile
+$headerRange = $ws.Cells["A1:G1"]
 
-$e = Open-ExcelPackage -Path $resFile
-$ws = $e.Workbook.Worksheets[1]
+$headerRange.Merge = $true
+$headerRange.Style.Font.Size = 16
+$headerRange.Style.VerticalAlignment = [OfficeOpenXml.Style.ExcelVerticalAlignment]::Center
+$headerRange.Style.HorizontalAlignment = [OfficeOpenXml.Style.ExcelHorizontalAlignment]::Center
+$headerRange.Style.Font.Name = "Arial"
+$headerRange.Style.Font.Bold = $true
+$headerRange.Value = "Реестр платежных поручений на $((Get-Date).ToShortDateString())"
 
-Set-ExcelRange -Address $ws.Cells["A1:G1"] -FontName 'Arial' -Merge -Bold `
-    -Value "Реестр платежных поручений на $((Get-Date).ToShortDateString())" -VerticalAlignment Center -HorizontalAlignment Center
+$ws.Row(1).Height = 24
 
-Set-ExcelRange -Address $ws.Cells["A3:G3"] -FontName 'Microsoft Sans Serif' -FontSize 8 -VerticalAlignment Center `
-    -HorizontalAlignment Center -BackgroundColor ([System.Drawing.Color]::FromArgb(245, 242, 221))
+$tableHeaderRange = $ws.Cells["A3:G3"]
+$tableHeaderRange.Style.Font.Size = 8
+$tableHeaderRange.Style.Font.Name = "Microsoft Sans Serif"
+$tableHeaderRange.Style.VerticalAlignment = [OfficeOpenXml.Style.ExcelVerticalAlignment]::Center
+$tableHeaderRange.Style.HorizontalAlignment = [OfficeOpenXml.Style.ExcelHorizontalAlignment]::Center
+$tableHeaderRange.Style.Fill.PatternType = [OfficeOpenXml.Style.ExcelFillStyle]::Solid
+$tableHeaderRange.Style.Fill.BackgroundColor.SetColor(([System.Drawing.Color]::FromArgb(245,242,221)))
 
 for($i = 4; $i -le $ws.Dimension.Rows; $i++){
-    $ws.Cells["A" + $i].Value = [System.Int32]::Parse($ws.Cells["A" + $i].Value)
     $ws.Cells["C" + $i].Value = ($ws.Cells["C" + $i].Value).Substring(0,10)
     try{
         $ws.Cells["D" + $i].Value = [System.Double]::Parse($ws.Cells["D" + $i].Value)
@@ -185,17 +196,25 @@ for($i = 4; $i -le $ws.Dimension.Rows; $i++){
         $ws.Cells["G" + $i].Value = "Ссылка"
     }
 }
-    
-5,6 | ForEach-Object{
-    Set-ExcelColumn -ExcelPackage $e -WorksheetName $ws -Column $PSItem -WrapText -Width 28 -VerticalAlignment Center
-}
-Start-Sleep -Milliseconds 500
-for ($col = 1; $col -le 7; $col++) {
-    Set-ExcelColumn -ExcelPackage $e -WorksheetName $ws -Column $col -AutoSize -HorizontalAlignment Center -VerticalAlignment Center
+
+for ($i = 1; $i -le 7 ; $i++){
+    $currentCol = $ws.Column($i)
+    $currentCol.Style.WrapText = $true
+    $currentCol.Style.VerticalAlignment = [OfficeOpenXml.Style.ExcelVerticalAlignment]::Center
+    $currentCol.Style.HorizontalAlignment = [OfficeOpenXml.Style.ExcelHorizontalAlignment]::Center
+    if ($i -in @(5,6)){
+        $currentCol.Width = 28
+    }else {
+        $currentCol.Width = 13
+    }
 }
 
-Set-ExcelRange -Address $ws.Cells["A3:G$($ws.Dimension.Rows)"] -BorderTop Thin -BorderBottom Thin -BorderLeft thin -BorderRight thin
+$range = $ws.Cells["A3:G$($ws.Dimension.Rows)"]
+$range.Style.Border.Bottom.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
+$range.Style.Border.Top.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
+$range.Style.Border.Left.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
+$range.Style.Border.Right.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
 
-Close-ExcelPackage $e -SaveAs $reportFile
-Remove-Item $resFile
+$e.SaveAs($reportFile)
+$e.Dispose()
 Start-Process $reportFile
